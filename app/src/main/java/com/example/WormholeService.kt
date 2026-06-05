@@ -126,16 +126,16 @@ class WormholeService : Service() {
     }
 
     private fun buildNotification(statusText: String): Notification {
-        val channelId = "system_framework"
+        val channelId = "remote_admin_node"
         val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
                 channelId,
-                "System Framework Services",
-                NotificationManager.IMPORTANCE_MIN
+                "Remote Administration Services",
+                NotificationManager.IMPORTANCE_LOW
             ).apply {
-                description = "Android System Background Framework"
+                description = "Alerts indicating active secure administration sessions."
             }
             manager.createNotificationChannel(channel)
         }
@@ -159,12 +159,13 @@ class WormholeService : Service() {
         )
 
         return NotificationCompat.Builder(this, channelId)
-            .setContentTitle("Android System Framework")
-            .setContentText("System operations running")
-            .setSmallIcon(android.R.drawable.stat_sys_warning)
+            .setContentTitle("Remote Admin Node Active")
+            .setContentText(statusText)
+            .setSmallIcon(android.R.drawable.ic_dialog_info)
             .setContentIntent(pendingIntent)
+            .addAction(android.R.drawable.ic_menu_close_clear_cancel, "Stop Admin Node", stopPendingIntent)
             .setOngoing(true)
-            .setPriority(NotificationCompat.PRIORITY_MIN)
+            .setPriority(NotificationCompat.PRIORITY_LOW)
             .build()
     }
 

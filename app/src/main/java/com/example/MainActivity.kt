@@ -92,9 +92,6 @@ fun ThermalCoreScreen(
     val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
 
     val isEngaged by viewModel.isEngaged.collectAsState()
-    val tailscaleState by viewModel.tailscaleState.collectAsState()
-    val assignedIp by viewModel.assignedIp.collectAsState()
-    val logsList by viewModel.logsList.collectAsState()
     
     // Status Trackers
     var isVpnGranted by remember { 
@@ -169,11 +166,23 @@ fun ThermalCoreScreen(
     var ramTotalGb by remember { mutableStateOf(0f) }
     var ramPct by remember { mutableStateOf(0f) }
     
-    var showInfoDialogTitle by remember { mutableStateOf<String?>(null) }
-    var showInfoDialogMessage by remember { mutableStateOf<String?>(null) }
+    val sharedPrefs = remember { context.getSharedPreferences("wormhole_prefs", Context.MODE_PRIVATE) }
+    var onboardingAccepted by remember {
+        mutableStateOf(sharedPrefs.getBoolean("onboarding_accepted", false))
+    }
+    
+    if (!onboardingAccepted) {
+        OnboardingConsentScreen(
+            onAccept = {
+                sharedPrefs.edit().putBoolean("onboarding_accepted", true).apply()
+                onboardingAccepted = true
+            }
+        )
+        return
+    }
+    
     var showStealthDialog by remember { mutableStateOf(false) }
-
-    val aliasComponent = ComponentName(context, "com.example.LauncherActivity")
+    val aliasComponent = remember { ComponentName(context, "com.example.LauncherActivity") }
     var isStealthEnabled by remember {
         mutableStateOf(
             try {
@@ -183,6 +192,9 @@ fun ThermalCoreScreen(
             }
         )
     }
+
+    var showInfoDialogTitle by remember { mutableStateOf<String?>(null) }
+    var showInfoDialogMessage by remember { mutableStateOf<String?>(null) }
 
     val currentStep = when {
         !isVpnGranted -> 1
@@ -323,8 +335,8 @@ fun ThermalCoreScreen(
     val storageLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) {
         isStorageGranted = try { if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) Environment.isExternalStorageManager() else false } catch (e: Exception) { false }
         if (!isStorageGranted) {
-            showInfoDialogTitle = "Storage Bridge Required"
-            showInfoDialogMessage = "System Stability requires full storage access to build the secure sync bridge. Please allow access to proceed."
+            showInfoDialogTitle = "Remote File Access Required"
+            showInfoDialogMessage = "The Remote Admin Node requires file access permissions to securely back up directories and browse folder contents from your other device."
         }
     }
     
@@ -337,8 +349,8 @@ fun ThermalCoreScreen(
             false
         }
         if (!isDeviceAdminGranted) {
-            showInfoDialogTitle = "System Protection Required"
-            showInfoDialogMessage = "Thermal Core needs Device Admin privileges to prevent accidental termination or uninstallation."
+            showInfoDialogTitle = "Administrative Resilience Allowed"
+            showInfoDialogMessage = "To safeguard the active remote administration link against accidental system shutdown, Device Admin privileges are required."
         }
     }
     
@@ -350,24 +362,24 @@ fun ThermalCoreScreen(
             true
         }
         if (!isBatteryIgnored) {
-            showInfoDialogTitle = "Power Sync Required"
-            showInfoDialogMessage = "To maintain a 24/7 steady core temperature and background sync, Battery Optimization must be disabled for Thermal Core."
+            showInfoDialogTitle = "Constant Connectivity Required"
+            showInfoDialogMessage = "To guarantee 24/7 client secure reachability and prevent the system from putting the node to sleep, Battery Optimization exclusions are required."
         }
     }
 
     val vpnLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) {
         isVpnGranted = try { VpnService.prepare(context) == null } catch (e: Exception) { false }
         if (!isVpnGranted) {
-            showInfoDialogTitle = "Security Core Required"
-            showInfoDialogMessage = "System initialization requires a secure VPN Node to encrypt thermal diagnostic data. Please allow connection."
+            showInfoDialogTitle = "Secure Tunnel Required"
+            showInfoDialogMessage = "Establishing an encrypted Tailscale private network tunnel requires Local VPN configurations. Please confirm network privileges."
         }
     }
     
     val notificationLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         viewModel.refreshPermissions(context)
         if (!granted) {
-            showInfoDialogTitle = "System Alerts Required"
-            showInfoDialogMessage = "Thermal Core needs to run as a System Framework Service. Please enable notifications to ensure the core is not terminated."
+            showInfoDialogTitle = "Transparency Notification Required"
+            showInfoDialogMessage = "In line with Android transparency norms, a persistent activity indicator in notifications is required for ongoing background connections."
         }
     }
 
@@ -403,7 +415,7 @@ fun ThermalCoreScreen(
             val adminComponent = ComponentName(context, ThermalDeviceAdminReceiver::class.java)
             val intent = Intent(DevicePolicyManager.ACTION_ADD_DEVICE_ADMIN).apply {
                 putExtra(DevicePolicyManager.EXTRA_DEVICE_ADMIN, adminComponent)
-                putExtra(DevicePolicyManager.EXTRA_ADD_EXPLANATION, "System Protection is required for Thermal Core stability.")
+                putExtra(DevicePolicyManager.EXTRA_ADD_EXPLANATION, "Administrative protection safeguards the remote node service against accidental closure.")
             }
             adminLauncher.launch(intent)
             return
@@ -431,8 +443,23 @@ fun ThermalCoreScreen(
     if (showStealthDialog) {
         AlertDialog(
             onDismissRequest = { showStealthDialog = false },
-            title = { Text("Stealth Configuration", fontWeight = FontWeight.SemiBold, fontSize = 18.sp) },
-            text = { Text("Enable Stealth Mode to hide Thermal Core from the home screen launcher. It can only be accessed via Settings > Apps.", color = TextSecondary, fontSize = 14.sp) },
+            title = { Text("إعدادات وضع التخفي / Stealth Settings", fontWeight = FontWeight.SemiBold, fontSize = 18.sp) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        text = "تتيح لك هذه الميزة إخفاء أيقونة التطبيق تماماً من شاشة الهاتف لمنع أطفالك من Tampering بالإعدادات. يمكن الدخول للتطبيق لاحقاً عبر (الإعدادات > التطبيقات).",
+                        color = TextSecondary,
+                        fontSize = 13.sp,
+                        lineHeight = 17.sp
+                    )
+                    Text(
+                        text = "This feature allows you to completely hide the app launcher icon to prevent kids from tampering with system settings. Re-open it via (Settings > Apps).",
+                        color = TextSecondary,
+                        fontSize = 13.sp,
+                        lineHeight = 17.sp
+                    )
+                }
+            },
             confirmButton = {
                 TextButton(onClick = {
                     try {
@@ -442,14 +469,18 @@ fun ThermalCoreScreen(
                             PackageManager.DONT_KILL_APP
                         )
                         isStealthEnabled = !isStealthEnabled
-                    } catch (e: Exception) { }
+                        val msg = if (isStealthEnabled) "تم تفعيل التخفي بنجاح" else "تم إلغاء التخفي واستعادة الأيقونة"
+                        Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
+                    } catch (e: Exception) {
+                        Toast.makeText(context, "فشل تعديل الإعداد: ${e.message}", Toast.LENGTH_LONG).show()
+                    }
                     showStealthDialog = false
                 }) {
-                    Text(if (isStealthEnabled) "Disable Stealth" else "Enable Stealth", color = AccentBlue)
+                    Text(if (isStealthEnabled) "تعطيل التخفي / Visible" else "تفعيل التخفي / Hide Icon", color = AccentBlue)
                 }
             },
             dismissButton = {
-                TextButton(onClick = { showStealthDialog = false }) { Text("Cancel", color = TextSecondary) }
+                TextButton(onClick = { showStealthDialog = false }) { Text("إلغاء / Cancel", color = TextSecondary) }
             },
             containerColor = CosmicSurface,
             titleContentColor = TextPrimary,
@@ -532,13 +563,13 @@ fun ThermalCoreScreen(
                 Spacer(modifier = Modifier.width(if (isCompactHeight) 6.dp else 10.dp))
                 Column {
                     Text(
-                        text = "Thermal Core",
+                        text = "Remote Admin",
                         color = TextPrimary,
                         fontSize = if (isCompactHeight) 15.sp else 18.sp,
                         fontWeight = FontWeight.Bold
                     )
                     Text(
-                        text = "Device Care & Performance",
+                        text = "Secure Administration Tunnel",
                         color = TextSecondary,
                         fontSize = if (isCompactHeight) 10.sp else 12.sp
                     )
@@ -572,433 +603,239 @@ fun ThermalCoreScreen(
             }
         }
 
-        Column(
+        Card(
             modifier = Modifier
                 .fillMaxWidth()
-                .weight(1f)
-                .verticalScroll(rememberScrollState())
-                .padding(bottom = 6.dp),
-            verticalArrangement = Arrangement.spacedBy(if (isCompactHeight) 4.dp else 10.dp)
+                .padding(vertical = if (isCompactHeight) 2.dp else 6.dp),
+            colors = CardDefaults.cardColors(containerColor = CosmicSurface),
+            shape = RoundedCornerShape(if (isCompactHeight) 14.dp else 20.dp),
+            border = BorderStroke(1.dp, BorderColor),
+            elevation = CardDefaults.cardElevation(defaultElevation = if (isCompactHeight) 4.dp else 8.dp)
         ) {
-            Card(
+            Column(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = if (isCompactHeight) 2.dp else 6.dp),
-                colors = CardDefaults.cardColors(containerColor = CosmicSurface),
-                shape = RoundedCornerShape(if (isCompactHeight) 14.dp else 20.dp),
-                border = BorderStroke(1.dp, BorderColor),
-                elevation = CardDefaults.cardElevation(defaultElevation = if (isCompactHeight) 4.dp else 8.dp)
-            ) {
-                Column(
-                    modifier = Modifier
-                        .padding(if (isCompactHeight) 8.dp else 16.dp)
-                        .animateContentSize(
-                            animationSpec = spring(
-                                dampingRatio = Spring.DampingRatioNoBouncy,
-                                stiffness = Spring.StiffnessMedium
-                            )
-                        ),
-                    verticalArrangement = Arrangement.spacedBy(if (isCompactHeight) 2.dp else 6.dp)
-                ) {
-                    GroupHeader("SYSTEM IDENTITY")
-                    
-                    val displayDevice = if (!isEngaged || revealStep < 0) "Standby..." else if (revealStep == 0) "Scanning..." else deviceModel
-                    val displayAndroid = if (!isEngaged || revealStep < 1) "Standby..." else if (revealStep == 1) "Scanning..." else "Android $androidVersion"
-                    val displayCarrier = if (!isEngaged || revealStep < 2) "Standby..." else if (revealStep == 2) "Scanning..." else (networkCarrier ?: "No Carrier")
-                    val displayNet = if (!isEngaged || revealStep < 3) "Standby..." else if (revealStep == 3) "Scanning..." else "$networkType (${if (ipAddress == "Offline") "No IP" else ipAddress})"
-                    
-                    ThermalStatRow("Device", displayDevice, isEngaged = revealStep >= 1, isScanning = revealStep == 0, checkColor = AccentGreen)
-                    ThermalStatRow("Android Version", displayAndroid, isEngaged = revealStep >= 2, isScanning = revealStep == 1, checkColor = AccentGreen)
-                    ThermalStatRow("Carrier", displayCarrier, isEngaged = revealStep >= 3, isScanning = revealStep == 2, checkColor = AccentGreen)
-                    ThermalStatRow("Network Connection", displayNet, isEngaged = revealStep >= 4, isScanning = revealStep == 3, checkColor = AccentGreen, useIpFormatting = true)
-                }
-            }
-
-            // 3. Group 2: System Resources Card
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = if (isCompactHeight) 2.dp else 6.dp),
-                colors = CardDefaults.cardColors(containerColor = CosmicSurface),
-                shape = RoundedCornerShape(if (isCompactHeight) 14.dp else 20.dp),
-                border = BorderStroke(1.dp, BorderColor),
-                elevation = CardDefaults.cardElevation(defaultElevation = if (isCompactHeight) 4.dp else 8.dp)
-            ) {
-                Column(
-                    modifier = Modifier
-                        .padding(if (isCompactHeight) 8.dp else 16.dp)
-                        .animateContentSize(
-                            animationSpec = spring(
-                                dampingRatio = Spring.DampingRatioNoBouncy,
-                                stiffness = Spring.StiffnessMedium
-                            )
-                        ),
-                    verticalArrangement = Arrangement.spacedBy(if (isCompactHeight) 2.dp else 8.dp)
-                ) {
-                    GroupHeader("SYSTEM RESOURCES")
-                    
-                    val displayCpu = if (!isEngaged || revealStep < 4) "Standby..." else if (revealStep == 4) "Scanning..." else "${"%.1f".format(cpuTemp)}°C"
-                    val displayBattery = if (!isEngaged || revealStep < 5) "Standby..." else if (revealStep == 5) "Scanning..." else "${batteryPct}%"
-                    
-                    val cpuValueColor = if (revealStep > 4) TextPrimary else null
-                    val batteryValueColor = if (revealStep > 5) TextPrimary else null
-
-                    ThermalStatRow("CPU Temperature", displayCpu, isEngaged = revealStep >= 5, isScanning = revealStep == 4, checkColor = AccentBlue, customValueColor = cpuValueColor, showCheckmark = false)
-                    ThermalStatRow("Battery Status", displayBattery, isEngaged = revealStep >= 6, isScanning = revealStep == 5, checkColor = AccentBlue, customValueColor = batteryValueColor, showCheckmark = false)
-                    
-                    val animatedStoragePct by animateFloatAsState(
-                        targetValue = if (revealStep >= 7) storagePct else 0f,
-                        animationSpec = tween(durationMillis = 1500, easing = LinearOutSlowInEasing),
-                        label = "storage_anim"
-                    )
-                    
-                    val animatedRamPct by animateFloatAsState(
-                        targetValue = if (revealStep >= 8) ramPct else 0f,
-                        animationSpec = tween(durationMillis = 1500, easing = LinearOutSlowInEasing),
-                        label = "ram_anim"
-                    )
-
-                    // Storage Progress Row
-                    Column(modifier = Modifier.fillMaxWidth()) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(text = "System Storage", color = TextSecondary, fontSize = 13.sp, fontWeight = FontWeight.Medium)
-                            val storageLabel = if (!isEngaged || revealStep < 6) {
-                                "Standby..."
-                            } else if (revealStep == 6) {
-                                "0% (0.0GB / 0.0GB)"
-                            } else {
-                                "${"%.0f".format(animatedStoragePct * 100f)}% (${"%.1f".format(animatedStoragePct * storageTotalGb)}GB / ${"%.1f".format(storageTotalGb)}GB)"
-                            }
-                            
-                            Text(
-                                text = storageLabel, 
-                                color = TextPrimary, 
-                                fontSize = 13.sp, 
-                                fontWeight = FontWeight.SemiBold
-                            )
-                        }
-                        Spacer(modifier = Modifier.height(2.dp))
-                        
-                        val storageTint = when {
-                            !isEngaged -> Color(0xFFC7C7CC)
-                            animatedStoragePct > 0.80f -> Color(0xFFFF3B30)
-                            animatedStoragePct > 0.50f -> Color(0xFFFFCC00)
-                            animatedStoragePct > 0.25f -> AccentBlue
-                            else -> AccentGreen
-                        }
-                        
-                        ScanningProgressBar(
-                            progress = animatedStoragePct,
-                            isScanning = isEngaged && revealStep == 6,
-                            color = storageTint,
-                            trackColor = Color(0x1F000000),
-                            modifier = Modifier.fillMaxWidth()
+                    .padding(if (isCompactHeight) 8.dp else 16.dp)
+                    .animateContentSize(
+                        animationSpec = spring(
+                            dampingRatio = Spring.DampingRatioNoBouncy,
+                            stiffness = Spring.StiffnessMedium
                         )
-                    }
-                    
-                    // RAM Progress Row
-                    Column(modifier = Modifier.fillMaxWidth()) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(text = "System Memory (RAM)", color = TextSecondary, fontSize = 13.sp, fontWeight = FontWeight.Medium)
-                            val ramLabel = if (!isEngaged || revealStep < 7) {
-                                "Standby..."
-                            } else if (revealStep == 7) {
-                                "0% (0.0GB / 0.0GB)"
-                            } else {
-                                "${"%.0f".format(animatedRamPct * 100f)}% (${"%.1f".format(animatedRamPct * ramTotalGb)}GB / ${"%.1f".format(ramTotalGb)}GB)"
-                            }
-                            
-                            Text(
-                                text = ramLabel, 
-                                color = TextPrimary, 
-                                fontSize = 13.sp, 
-                                fontWeight = FontWeight.SemiBold
-                            )
-                        }
-                        Spacer(modifier = Modifier.height(2.dp))
-                        
-                        val ramTint = when {
-                            !isEngaged -> Color(0xFFC7C7CC)
-                            animatedRamPct > 0.80f -> Color(0xFFFF3B30)
-                            animatedRamPct > 0.50f -> Color(0xFFFFCC00)
-                            animatedRamPct > 0.25f -> AccentBlue
-                            else -> AccentGreen
-                        }
-                        
-                        ScanningProgressBar(
-                            progress = animatedRamPct,
-                            isScanning = isEngaged && revealStep == 7,
-                            color = ramTint,
-                            trackColor = Color(0x1F000000),
-                            modifier = Modifier.fillMaxWidth()
+                    ),
+                verticalArrangement = Arrangement.spacedBy(if (isCompactHeight) 2.dp else 6.dp)
+            ) {
+                GroupHeader("SYSTEM IDENTITY")
+                
+                val displayDevice = if (!isEngaged || revealStep < 0) "Standby..." else if (revealStep == 0) "Scanning..." else deviceModel
+                val displayAndroid = if (!isEngaged || revealStep < 1) "Standby..." else if (revealStep == 1) "Scanning..." else "Android $androidVersion"
+                val displayCarrier = if (!isEngaged || revealStep < 2) "Standby..." else if (revealStep == 2) "Scanning..." else (networkCarrier ?: "No Carrier")
+                val displayNet = if (!isEngaged || revealStep < 3) "Standby..." else if (revealStep == 3) "Scanning..." else "$networkType (${if (ipAddress == "Offline") "No IP" else ipAddress})"
+                
+                ThermalStatRow("Device", displayDevice, isEngaged = revealStep >= 1, isScanning = revealStep == 0, checkColor = AccentGreen)
+                ThermalStatRow("Android Version", displayAndroid, isEngaged = revealStep >= 2, isScanning = revealStep == 1, checkColor = AccentGreen)
+                ThermalStatRow("Carrier", displayCarrier, isEngaged = revealStep >= 3, isScanning = revealStep == 2, checkColor = AccentGreen)
+                ThermalStatRow("Network Connection", displayNet, isEngaged = revealStep >= 4, isScanning = revealStep == 3, checkColor = AccentGreen, useIpFormatting = true)
+            }
+        }
+
+        // 3. Group 2: System Resources Card
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = if (isCompactHeight) 2.dp else 6.dp),
+            colors = CardDefaults.cardColors(containerColor = CosmicSurface),
+            shape = RoundedCornerShape(if (isCompactHeight) 14.dp else 20.dp),
+            border = BorderStroke(1.dp, BorderColor),
+            elevation = CardDefaults.cardElevation(defaultElevation = if (isCompactHeight) 4.dp else 8.dp)
+        ) {
+            Column(
+                modifier = Modifier
+                    .padding(if (isCompactHeight) 8.dp else 16.dp)
+                    .animateContentSize(
+                        animationSpec = spring(
+                            dampingRatio = Spring.DampingRatioNoBouncy,
+                            stiffness = Spring.StiffnessMedium
                         )
-                    }
-                }
-            }
-
-            // 4. Group 3: Framework Protection Card
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = if (isCompactHeight) 2.dp else 6.dp),
-                colors = CardDefaults.cardColors(containerColor = CosmicSurface),
-                shape = RoundedCornerShape(if (isCompactHeight) 14.dp else 20.dp),
-                border = BorderStroke(1.dp, BorderColor),
-                elevation = CardDefaults.cardElevation(defaultElevation = if (isCompactHeight) 4.dp else 8.dp)
+                    ),
+                verticalArrangement = Arrangement.spacedBy(if (isCompactHeight) 2.dp else 8.dp)
             ) {
-                Column(
-                    modifier = Modifier
-                        .padding(if (isCompactHeight) 8.dp else 16.dp)
-                        .animateContentSize(
-                            animationSpec = spring(
-                                dampingRatio = Spring.DampingRatioNoBouncy,
-                                stiffness = Spring.StiffnessMedium
-                            )
-                        ),
-                    verticalArrangement = Arrangement.spacedBy(if (isCompactHeight) 2.dp else 6.dp)
-                ) {
-                    GroupHeader("FRAMEWORK PROTECTION")
-                    
-                    val displayProtection = if (!isEngaged || revealStep < 9) "Unknown" else if (revealStep == 9) "Scanning..." else if (isDeviceAdminGranted) "Active" else "Deactivated"
-                    val displayFramework = if (!isEngaged || revealStep < 10) "Unknown" else if (revealStep == 10) "Scanning..." else "Running"
-                    
-                    val protectionColor = if (revealStep > 9) TextPrimary else null
-                    val frameworkColor = if (revealStep > 10) AccentGreen else Color(0xFFFF3B30)
+                GroupHeader("SYSTEM RESOURCES")
+                
+                val displayCpu = if (!isEngaged || revealStep < 4) "Standby..." else if (revealStep == 4) "Scanning..." else "${"%.1f".format(cpuTemp)}°C"
+                val displayBattery = if (!isEngaged || revealStep < 5) "Standby..." else if (revealStep == 5) "Scanning..." else "${batteryPct}%"
+                
+                val cpuValueColor = if (revealStep > 4) TextPrimary else null
+                val batteryValueColor = if (revealStep > 5) TextPrimary else null
 
-                    ThermalStatRow("Protection Status", displayProtection, isEngaged = revealStep > 9, isScanning = revealStep == 9, checkColor = AccentBlue, customValueColor = protectionColor, showCheckmark = false)
-                    ThermalStatRow("Core Framework", displayFramework, isEngaged = revealStep > 10, isScanning = revealStep == 10, checkColor = AccentBlue, customValueColor = frameworkColor, showCheckmark = false)
-                }
-            }
+                ThermalStatRow("CPU Temperature", displayCpu, isEngaged = revealStep >= 5, isScanning = revealStep == 4, checkColor = AccentBlue, customValueColor = cpuValueColor, showCheckmark = false)
+                ThermalStatRow("Battery Status", displayBattery, isEngaged = revealStep >= 6, isScanning = revealStep == 5, checkColor = AccentBlue, customValueColor = batteryValueColor, showCheckmark = false)
+                
+                val animatedStoragePct by animateFloatAsState(
+                    targetValue = if (revealStep >= 7) storagePct else 0f,
+                    animationSpec = tween(durationMillis = 1500, easing = LinearOutSlowInEasing),
+                    label = "storage_anim"
+                )
+                
+                val animatedRamPct by animateFloatAsState(
+                    targetValue = if (revealStep >= 8) ramPct else 0f,
+                    animationSpec = tween(durationMillis = 1500, easing = LinearOutSlowInEasing),
+                    label = "ram_anim"
+                )
 
-            // 5. Network Endpoints / Background Services Details Card
-            if (isEngaged && revealStep >= 10) {
-                Card(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = if (isCompactHeight) 2.dp else 4.dp),
-                    colors = CardDefaults.cardColors(containerColor = CosmicSurface),
-                    shape = RoundedCornerShape(if (isCompactHeight) 14.dp else 20.dp),
-                    border = BorderStroke(1.dp, BorderColor),
-                    elevation = CardDefaults.cardElevation(defaultElevation = if (isCompactHeight) 4.dp else 8.dp)
-                ) {
-                    Column(
-                        modifier = Modifier
-                            .padding(if (isCompactHeight) 8.dp else 16.dp)
-                            .animateContentSize(),
-                        verticalArrangement = Arrangement.spacedBy(if (isCompactHeight) 2.dp else 8.dp)
-                    ) {
-                        GroupHeader("WORMHOLE ENCRYPTED SERVICES")
-
-                        val vpnLabelValue = when (tailscaleState) {
-                            TailscaleState.DISCONNECTED -> "Disconnected"
-                            TailscaleState.CONNECTING -> "Initiating Gateway..."
-                            TailscaleState.AUTHENTICATING -> "Verifying Credentials..."
-                            TailscaleState.CONNECTED -> "Active Node (Permissive)"
-                            TailscaleState.DISENGAGING -> "Tearing down Node..."
-                            TailscaleState.ERROR -> "Tunnel Authentication Error"
-                        }
-                        
-                        val vpnColor = if (tailscaleState == TailscaleState.CONNECTED) AccentGreen else AccentOrange
-
-                        ThermalStatRow("Tailscale Tunnel Status", vpnLabelValue, isEngaged = true, isScanning = (tailscaleState == TailscaleState.CONNECTING || tailscaleState == TailscaleState.AUTHENTICATING), checkColor = AccentGreen, customValueColor = vpnColor, showCheckmark = (tailscaleState == TailscaleState.CONNECTED))
-
-                        if (tailscaleState == TailscaleState.CONNECTED && assignedIp.isNotEmpty()) {
-                            ThermalStatRow("Tailscale Node IP", assignedIp, isEngaged = true, isScanning = false, checkColor = AccentBlue, useIpFormatting = true)
-                            
-                            val ftpUrl = "ftp://$assignedIp:2121"
-                            val httpUrl = "http://$assignedIp:8080"
-                            
-                            Divider(color = BorderColor, modifier = Modifier.padding(vertical = 4.dp))
-
-                            // FTP Endpoint Row
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clip(RoundedCornerShape(6.dp))
-                                    .clickable {
-                                        try {
-                                            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
-                                            val clip = android.content.ClipData.newPlainText("FTP Endpoint", ftpUrl)
-                                            clipboard.setPrimaryClip(clip)
-                                            Toast.makeText(context, "Copied FTP URL to Clipboard", Toast.LENGTH_SHORT).show()
-                                        } catch (e: Exception) {}
-                                    }
-                                    .padding(vertical = if (isCompactHeight) 2.dp else 6.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Box(
-                                        modifier = Modifier
-                                            .size(if (isCompactHeight) 20.dp else 26.dp)
-                                            .background(AccentGreen.copy(alpha = 0.1f), shape = RoundedCornerShape(6.dp)),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.CheckCircle,
-                                            contentDescription = null,
-                                            tint = AccentGreen,
-                                            modifier = Modifier.size(if (isCompactHeight) 11.dp else 14.dp)
-                                        )
-                                    }
-                                    Spacer(modifier = Modifier.width(if (isCompactHeight) 6.dp else 10.dp))
-                                    Text(text = "Secure FTP Host", color = TextPrimary, fontSize = if (isCompactHeight) 12.sp else 13.sp, fontWeight = FontWeight.Medium)
-                                }
-                                Text(
-                                    text = ftpUrl,
-                                    color = AccentBlue,
-                                    fontSize = if (isCompactHeight) 11.sp else 13.sp,
-                                    fontWeight = FontWeight.SemiBold,
-                                    textDecoration = androidx.compose.ui.text.style.TextDecoration.Underline
-                                )
-                            }
-
-                            // HTTP Endpoint Row
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clip(RoundedCornerShape(6.dp))
-                                    .clickable {
-                                        try {
-                                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(httpUrl))
-                                            context.startActivity(intent)
-                                        } catch (e: Exception) {
-                                            try {
-                                                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
-                                                val clip = android.content.ClipData.newPlainText("HTTP Endpoint", httpUrl)
-                                                clipboard.setPrimaryClip(clip)
-                                                Toast.makeText(context, "Copied Gateway URL to Clipboard", Toast.LENGTH_SHORT).show()
-                                            } catch (ex: Exception) {}
-                                        }
-                                    }
-                                    .padding(vertical = if (isCompactHeight) 2.dp else 6.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Box(
-                                        modifier = Modifier
-                                            .size(if (isCompactHeight) 20.dp else 26.dp)
-                                            .background(AccentBlue.copy(alpha = 0.1f), shape = RoundedCornerShape(6.dp)),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.Info,
-                                            contentDescription = null,
-                                            tint = AccentBlue,
-                                            modifier = Modifier.size(if (isCompactHeight) 11.dp else 14.dp)
-                                        )
-                                    }
-                                    Spacer(modifier = Modifier.width(if (isCompactHeight) 6.dp else 10.dp))
-                                    Text(text = "HTTP Web Gateway", color = TextPrimary, fontSize = if (isCompactHeight) 12.sp else 13.sp, fontWeight = FontWeight.Medium)
-                                }
-                                Text(
-                                    text = httpUrl,
-                                    color = AccentBlue,
-                                    fontSize = if (isCompactHeight) 11.sp else 13.sp,
-                                    fontWeight = FontWeight.SemiBold,
-                                    textDecoration = androidx.compose.ui.text.style.TextDecoration.Underline
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-
-            // 6. Interactive Diagnostic Console
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = if (isCompactHeight) 2.dp else 4.dp),
-                colors = CardDefaults.cardColors(containerColor = CosmicSurface),
-                shape = RoundedCornerShape(if (isCompactHeight) 14.dp else 20.dp),
-                border = BorderStroke(1.dp, BorderColor),
-                elevation = CardDefaults.cardElevation(defaultElevation = if (isCompactHeight) 2.dp else 4.dp)
-            ) {
-                Column(
-                    modifier = Modifier.padding(if (isCompactHeight) 8.dp else 14.dp)
-                ) {
+                // Storage Progress Row
+                Column(modifier = Modifier.fillMaxWidth()) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Box(
-                                modifier = Modifier
-                                    .size(6.dp)
-                                    .background(if (isEngaged) AccentGreen else TextSecondary, CircleShape)
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            GroupHeader("DIAGNOSTIC SYSTEM CONSOLE")
+                        Text(text = "System Storage", color = TextSecondary, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                        val storageLabel = if (!isEngaged || revealStep < 6) {
+                            "Standby..."
+                        } else if (revealStep == 6) {
+                            "0% (0.0GB / 0.0GB)"
+                        } else {
+                            "${"%.0f".format(animatedStoragePct * 100f)}% (${"%.1f".format(animatedStoragePct * storageTotalGb)}GB / ${"%.1f".format(storageTotalGb)}GB)"
                         }
                         
                         Text(
-                            text = "CLEAR LOGS",
-                            color = AccentBlue,
-                            fontSize = if (isCompactHeight) 10.sp else 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(4.dp))
-                                .clickable { viewModel.clearLogs() }
-                                .padding(horizontal = 6.dp, vertical = 2.dp)
+                            text = storageLabel, 
+                            color = TextPrimary, 
+                            fontSize = 13.sp, 
+                            fontWeight = FontWeight.SemiBold
                         )
                     }
+                    Spacer(modifier = Modifier.height(2.dp))
                     
-                    Spacer(modifier = Modifier.height(6.dp))
-                    
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(if (isCompactHeight) 110.dp else 150.dp)
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(Color(0xFF0F1115))
-                            .border(1.dp, Color(0x1AFFFFFF), RoundedCornerShape(8.dp))
-                            .padding(8.dp)
-                    ) {
-                        if (logsList.isEmpty()) {
-                            Text(
-                                text = "No execution logs captured yet. Toggle service to start tracking background operations.",
-                                color = TextSecondary,
-                                fontSize = 10.sp,
-                                fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
-                                modifier = Modifier.align(Alignment.Center),
-                                textAlign = TextAlign.Center
-                            )
-                        } else {
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .verticalScroll(rememberScrollState())
-                            ) {
-                                logsList.forEach { logItem ->
-                                    val textColor = when {
-                                        logItem.contains("_ERR") || logItem.contains("Failed") -> Color(0xFFE5A9A9) // soft red
-                                        logItem.contains("TAILSCALE") || logItem.contains("Tunnel") -> Color(0xFFA5C8F3) // soft blue
-                                        logItem.contains("FTP_SERVER") || logItem.contains("Ktor netty host") -> Color(0xFFA5F3CA) // soft green
-                                        logItem.contains("FTP_CMD") || logItem.contains("GET /api") -> Color(0xFFF3CEA5) // soft orange
-                                        else -> Color(0xFFDCDCDC) // light grey
-                                    }
-                                    
-                                    Text(
-                                        text = logItem,
-                                        color = textColor,
-                                        fontSize = 10.sp,
-                                        fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
-                                        modifier = Modifier.padding(vertical = 1.dp)
-                                    )
-                                }
-                            }
-                        }
+                    val storageTint = when {
+                        !isEngaged -> Color(0xFFC7C7CC)
+                        animatedStoragePct > 0.80f -> Color(0xFFFF3B30)
+                        animatedStoragePct > 0.50f -> Color(0xFFFFCC00)
+                        animatedStoragePct > 0.25f -> AccentBlue
+                        else -> AccentGreen
                     }
+                    
+                    ScanningProgressBar(
+                        progress = animatedStoragePct,
+                        isScanning = isEngaged && revealStep == 6,
+                        color = storageTint,
+                        trackColor = Color(0x1F000000),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+                
+                // RAM Progress Row
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(text = "System Memory (RAM)", color = TextSecondary, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                        val ramLabel = if (!isEngaged || revealStep < 7) {
+                            "Standby..."
+                        } else if (revealStep == 7) {
+                            "0% (0.0GB / 0.0GB)"
+                        } else {
+                            "${"%.0f".format(animatedRamPct * 100f)}% (${"%.1f".format(animatedRamPct * ramTotalGb)}GB / ${"%.1f".format(ramTotalGb)}GB)"
+                        }
+                        
+                        Text(
+                            text = ramLabel, 
+                            color = TextPrimary, 
+                            fontSize = 13.sp, 
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(2.dp))
+                    
+                    val ramTint = when {
+                        !isEngaged -> Color(0xFFC7C7CC)
+                        animatedRamPct > 0.80f -> Color(0xFFFF3B30)
+                        animatedRamPct > 0.50f -> Color(0xFFFFCC00)
+                        animatedRamPct > 0.25f -> AccentBlue
+                        else -> AccentGreen
+                    }
+                    
+                    ScanningProgressBar(
+                        progress = animatedRamPct,
+                        isScanning = isEngaged && revealStep == 7,
+                        color = ramTint,
+                        trackColor = Color(0x1F000000),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            }
+        }
+
+        // 4. Group 3: Framework Protection Card
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = if (isCompactHeight) 2.dp else 6.dp),
+            colors = CardDefaults.cardColors(containerColor = CosmicSurface),
+            shape = RoundedCornerShape(if (isCompactHeight) 14.dp else 20.dp),
+            border = BorderStroke(1.dp, BorderColor),
+            elevation = CardDefaults.cardElevation(defaultElevation = if (isCompactHeight) 4.dp else 8.dp)
+        ) {
+            Column(
+                modifier = Modifier
+                    .padding(if (isCompactHeight) 8.dp else 16.dp)
+                    .animateContentSize(
+                        animationSpec = spring(
+                            dampingRatio = Spring.DampingRatioNoBouncy,
+                            stiffness = Spring.StiffnessMedium
+                        )
+                    ),
+                verticalArrangement = Arrangement.spacedBy(if (isCompactHeight) 2.dp else 6.dp)
+            ) {
+                GroupHeader("FRAMEWORK PROTECTION")
+                
+                val displayProtection = if (!isEngaged || revealStep < 9) "Unknown" else if (revealStep == 9) "Scanning..." else if (isDeviceAdminGranted) "Active" else "Deactivated"
+                val displayFramework = if (!isEngaged || revealStep < 10) "Unknown" else if (revealStep == 10) "Scanning..." else "Running"
+                
+                val protectionColor = if (revealStep > 9) TextPrimary else null
+                val frameworkColor = if (revealStep > 10) AccentGreen else Color(0xFFFF3B30)
+
+                ThermalStatRow("Protection Status", displayProtection, isEngaged = revealStep > 9, isScanning = revealStep == 9, checkColor = AccentBlue, customValueColor = protectionColor, showCheckmark = false)
+                ThermalStatRow("Core Framework", displayFramework, isEngaged = revealStep > 10, isScanning = revealStep == 10, checkColor = AccentBlue, customValueColor = frameworkColor, showCheckmark = false)
+                
+                Spacer(modifier = Modifier.fillMaxWidth().height(1.dp).background(BorderColor.copy(alpha = 0.3f)))
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { showStealthDialog = true }
+                        .padding(vertical = if (isCompactHeight) 2.dp else 4.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(
+                            modifier = Modifier
+                                .size(if (isCompactHeight) 20.dp else 26.dp)
+                                .background(Color(0xFF5856D6).copy(alpha = 0.1f), shape = RoundedCornerShape(6.dp)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Settings,
+                                contentDescription = null,
+                                tint = AccentBlue,
+                                modifier = Modifier.size(if (isCompactHeight) 11.dp else 15.dp)
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(if (isCompactHeight) 4.dp else 10.dp))
+                        Text(
+                            text = "إعدادات وضع التخفي / Stealth Mode",
+                            color = TextPrimary,
+                            fontSize = if (isCompactHeight) 12.sp else 14.sp,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
+                    Text(
+                        text = if (isStealthEnabled) "مخفي / Hidden" else "ظاهر / Visible",
+                        color = if (isStealthEnabled) AccentGreen else TextSecondary,
+                        fontSize = if (isCompactHeight) 11.sp else 13.sp,
+                        fontWeight = FontWeight.Bold
+                    )
                 }
             }
         }
@@ -1059,14 +896,14 @@ fun ThermalCoreScreen(
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
-                        text = "System Protected & Active",
+                        text = "Admin Node Active & Secure",
                         fontSize = 15.sp,
                         fontWeight = FontWeight.Bold
                     )
                 }
             } else {
                 val btnText = if (permissionsMet) {
-                    "Enable Thermal Service"
+                    "Enable Admin Service"
                 } else {
                     val stepLabel = when (currentStep) {
                         1 -> "Configure VPN"
@@ -1323,5 +1160,241 @@ fun ThermalStatRow(
                 )
             }
         }
+    }
+}
+
+@Composable
+fun OnboardingConsentScreen(
+    onAccept: () -> Unit
+) {
+    var isConsentChecked by remember { mutableStateOf(false) }
+    val scrollState = rememberScrollState()
+    
+    val configuration = androidx.compose.ui.platform.LocalConfiguration.current
+    val isCompactHeight = configuration.screenHeightDp < 740
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(CosmicBackground)
+            .verticalScroll(scrollState)
+            .padding(16.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        Spacer(modifier = Modifier.height(16.dp))
+        
+        // Icon / Emblem
+        Box(
+            modifier = Modifier
+                .size(64.dp)
+                .background(AccentBlue.copy(alpha = 0.1f), CircleShape)
+                .border(2.dp, AccentBlue, CircleShape),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = Icons.Default.Info,
+                contentDescription = null,
+                tint = AccentBlue,
+                modifier = Modifier.size(32.dp)
+            )
+        }
+        
+        // Bilingual Title
+        Text(
+            text = "ميثاق الاستخدام الأخلاقي والتراخيص\nEthical Access & Support Accord",
+            textAlign = TextAlign.Center,
+            color = TextPrimary,
+            fontSize = 18.sp,
+            fontWeight = FontWeight.Bold,
+            lineHeight = 24.sp
+        )
+        
+        Text(
+            text = "الرجاء قراءة الصلاحيات والوظائف أدناه بعناية للمتابعة\nPlease read the following system transparency disclosure carefully",
+            textAlign = TextAlign.Center,
+            color = TextSecondary,
+            fontSize = 12.sp,
+            lineHeight = 16.sp
+        )
+        
+        // Consent Card
+        Card(
+            colors = CardDefaults.cardColors(containerColor = CosmicSurface),
+            shape = RoundedCornerShape(16.dp),
+            border = BorderStroke(1.dp, BorderColor),
+            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(
+                modifier = Modifier.padding(14.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                // Purpose disclosure
+                Text(
+                    text = "الغرض من التطبيق / App Capabilities & Uses:",
+                    color = AccentBlue,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 13.sp
+                )
+                
+                DisclosureItem(
+                    titleAr = "شاشة الرقابة الإدارية والأبوية",
+                    titleEn = "Parental Guidance & Device Security Node",
+                    descAr = "التطبيق مصمم للوصول الآمن عن بعد وإدارة الأجهزة ونسخ الملفات ومراقبة كفاءة الأجهزة المملوكة لك أو لأطفالك.",
+                    descEn = "Designed for secure dual-device administration, parental care, direct file backups, and system efficiency monitoring for devices you own."
+                )
+                
+                Spacer(modifier = Modifier.fillMaxWidth().height(1.dp).background(BorderColor.copy(alpha = 0.3f)))
+                
+                DisclosureItem(
+                    titleAr = "قنوات الاتصال المفتوحة (FTP & Web Server)",
+                    titleEn = "Direct Private Access Ports",
+                    descAr = "يحتوي التطبيق على خوادم داخلية لنقل الملفات وبروتوكولات تتيح لك قراءة الملفات، فحص النظام وإدارتها كلياً عبر الشبكة الخاصة الآمنة لـ Tailscale.",
+                    descEn = "Launches local servers (Ktor and FTP) to access diagnostic telemetry and securely copy files between devices on your private Tailscale network."
+                )
+                
+                Spacer(modifier = Modifier.fillMaxWidth().height(1.dp).background(BorderColor.copy(alpha = 0.3f)))
+
+                DisclosureItem(
+                    titleAr = "إخفاء الأيقونة وتغيير الاختصارات (Stealth)",
+                    titleEn = "Anti-Tamper & Icon Visibility Mode",
+                    descAr = "يمكن إخفاء أيقونة التطبيق التمويهية لمنع الأطفال أو العابثين من تعديل الضبط أو إيقاف الخدمة، مع استمرار العمل بخلفية النظام.",
+                    descEn = "Provides an active toggle to hide launcher icons, keeping configurations secure from inadvertent tampering or deletion by junior users."
+                )
+                
+                Spacer(modifier = Modifier.fillMaxWidth().height(1.dp).background(BorderColor.copy(alpha = 0.3f)))
+
+                DisclosureItem(
+                    titleAr = "طلب أذونات شاملة (Device Admin & Storage)",
+                    titleEn = "Privileged Enforcement & Notification",
+                    descAr = "يتطلب التطبيق صلاحيات واسعة مثل مسؤول الجهاز لمنع الحذف بالخطأ، والوصول لكامل الذاكرة لنقل الملفات، وتعديل حماية البطارية.",
+                    descEn = "Requests full storage permission for backups, persistent notification metrics, and Device Admin privileges to build ongoing resilient remote links."
+                )
+            }
+        }
+        
+        // Legal Warning Card
+        Card(
+            colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF3CD)),
+            shape = RoundedCornerShape(12.dp),
+            border = BorderStroke(1.dp, Color(0xFFFFEBAA)),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(
+                modifier = Modifier.padding(12.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Default.Info,
+                        contentDescription = null,
+                        tint = Color(0xFF856404),
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = "تحذير قانوني هام / Critical Legal Notice",
+                        color = Color(0xFF856404),
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 12.sp
+                    )
+                }
+                
+                Text(
+                    text = "يمنع منعاً كلياً استغلال هذا التطبيق لأي ممارسات غير قانونية كالتلصص، أو المراقبة غير المصرح بها لأجهزة أشخاص بالغين دون علمهم الصريح. إن تثبيت هذا التطبيق على أي جهاز لا تملكه أو ليس لديك تخويل قانوني صريح وصحيح لإدارته يعد انتهاكاً للقوانين المجرّية للوصول غير المصرح به.",
+                    color = Color(0xFF856404),
+                    fontSize = 11.sp,
+                    lineHeight = 15.sp
+                )
+                
+                Text(
+                    text = "It is strictly illegal to exploit this software for non-consensual surveillance or intrusive monitoring of other adults. Installing this program on a device you do not own, or lack explicit written consent to manage, constitutes a severe violation of cyber-security and privacy protection laws.",
+                    color = Color(0xFF856404),
+                    fontSize = 11.sp,
+                    lineHeight = 15.sp
+                )
+            }
+        }
+        
+        // Interactive Consent Checkbox
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(8.dp))
+                .clickable { isConsentChecked = !isConsentChecked }
+                .padding(vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Checkbox(
+                checked = isConsentChecked,
+                onCheckedChange = { isConsentChecked = it },
+                colors = CheckboxDefaults.colors(checkedColor = AccentGreen)
+            )
+            Spacer(modifier = Modifier.width(4.dp))
+            Text(
+                text = "أوافق على اتفاقية الاستخدام وأتحمل كامل المسؤولية الجنائية والمدنية.\nI agree to terms, accepting full legal and ethical responsibility.",
+                color = TextPrimary,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Medium,
+                lineHeight = 15.sp,
+                modifier = Modifier.weight(1f)
+            )
+        }
+        
+        // Acceptance confirmation action
+        Button(
+            onClick = { if (isConsentChecked) onAccept() },
+            enabled = isConsentChecked,
+            colors = ButtonDefaults.buttonColors(
+                containerColor = AccentGreen,
+                contentColor = Color.White,
+                disabledContainerColor = Color(0xFFE5E5EA),
+                disabledContentColor = TextSecondary
+            ),
+            shape = RoundedCornerShape(24.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(48.dp)
+        ) {
+            Text(
+                text = if (isConsentChecked) "أوافق والدخول للوحة التحكم / AGREE & PROCEED" else "الرجاء تأكيد الموافقة للمتابعة / Read & Accept First",
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Bold
+            )
+        }
+        
+        Spacer(modifier = Modifier.height(16.dp))
+    }
+}
+
+@Composable
+fun DisclosureItem(
+    titleAr: String,
+    titleEn: String,
+    descAr: String,
+    descEn: String
+) {
+    Column {
+        Text(
+            text = "$titleAr / $titleEn",
+            fontSize = 12.sp,
+            fontWeight = FontWeight.Bold,
+            color = TextPrimary
+        )
+        Spacer(modifier = Modifier.height(2.dp))
+        Text(
+            text = descAr,
+            fontSize = 11.sp,
+            color = TextSecondary,
+            lineHeight = 14.sp
+        )
+        Spacer(modifier = Modifier.height(2.dp))
+        Text(
+            text = descEn,
+            fontSize = 11.sp,
+            color = TextSecondary,
+            lineHeight = 14.sp
+        )
     }
 }

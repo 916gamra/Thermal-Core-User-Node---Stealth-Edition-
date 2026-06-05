@@ -1,6 +1,6 @@
 {
-  "name": "Thermal Core",
-  "description": "Wormhole Client V2 (Tailscale Powered) - Secure remote file agent serving over a secure private network.",
+  "name": "Remote Admin Node",
+  "description": "Professional System Health dashboard and secure remote admin node powered by Tailscale.",
   "requestFramePermissions": [],
   "majorCapabilities": [
     "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
